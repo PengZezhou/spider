@@ -1,0 +1,29 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: crawler
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/crawler?characterEncoding=UTF-8&useSSL=false&autoReconnect=true&serverTimezone=Asia/Shanghai
+    username: root
+    password: password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    initial-size: 10
+    min-idle: 10
+    max-active: 30
+    hikari:
+      minimum-idle: 3
+      maximum-pool-size: 10
+      max-lifetime: 30000
+      connection-test-query: SELECT 1
+
+  redis:
+    host: 10.114.20.203
+    port: 6379
+    jedis:
+      pool:
+        max-wait: 3000
+        max-idle: 20
+        max-active: 100
+    cluster:
+      timeout: 3000

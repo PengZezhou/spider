@@ -1,0 +1,9 @@
+1: common包
+  1.1 代码生产工具
+  1.2 dto
+
+2: service包
+  2.1 config 配置包
+  2.2 response 返回封装包
+  2.3 test 包
+  2.4 utils 基础工具包
