@@ -41,3 +41,4 @@
 /.local-browser/win64-722234/chrome-win/locales/hr.pak
 /.local-browser/win64-722234/chrome-win/locales/hu.pak
 /core/target/classes/com/yssj/core/framework/cache/ICache.class
+/core/target/classes/com/yssj/core/framework/interceptor/AppAuthInterceptor.class

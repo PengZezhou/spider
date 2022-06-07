@@ -8,7 +8,7 @@
         </encoder>
     </appender>
 
-    <springProfile name="prod">
+    <springProfile name="aliyun">
         <root level="info">
             <appender-ref ref="console"/>
         </root>

@@ -1,12 +1,12 @@
 server:
-  port: 8080
+  port: 8089
 spring:
   application:
     name: crawler
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/crawler?characterEncoding=UTF-8&useSSL=false&autoReconnect=true&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://10.114.20.203:3306/crawler?characterEncoding=UTF-8&useSSL=false&autoReconnect=true&serverTimezone=Asia/Shanghai
     username: root
-    password: password
+    password: yssj@1101
     driver-class-name: com.mysql.cj.jdbc.Driver
     initial-size: 10
     min-idle: 10

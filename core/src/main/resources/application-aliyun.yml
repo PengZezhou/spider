@@ -1,12 +1,13 @@
 server:
-  port: 80
+  port: 8089
 spring:
   application:
-    name: statistics
+    name: crawler
   datasource:
-    url: jdbc:mysql://rm-bp162lib12d6f3vyn.mysql.rds.aliyuncs.com:3306/answer?characterEncoding=UTF-8&useSSL=false&autoReconnect=true&serverTimezone=Asia/Shanghai
-    username: answer
-    password: answer@1101
+#    url: jdbc:mysql://rm-bp1wl1327k70956of125010.mysql.rds.aliyuncs.com:3306/crawler?characterEncoding=UTF-8&useSSL=false&autoReconnect=true&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://rm-bp1wl1327k70956of2o.mysql.rds.aliyuncs.com:3306/crawler?characterEncoding=UTF-8&useSSL=false&autoReconnect=true&serverTimezone=Asia/Shanghai
+    username: a8_comment
+    password: comment_a8
     driver-class-name: com.mysql.cj.jdbc.Driver
     initial-size: 10
     min-idle: 10
@@ -16,10 +17,10 @@ spring:
       maximum-pool-size: 10
       max-lifetime: 30000
       connection-test-query: SELECT 1
+
   redis:
-    host: r-bp1incmx0ova9dploj.redis.rds.aliyuncs.com
+    host: 10.114.20.203
     port: 6379
-    password: Yssj@1101
     jedis:
       pool:
         max-wait: 3000
@@ -27,7 +28,3 @@ spring:
         max-active: 100
     cluster:
       timeout: 3000
-
-uums:
-  host: http://uums-svc:8080/uums
-  userTokenValid: /v1/api/user/verifyLogin

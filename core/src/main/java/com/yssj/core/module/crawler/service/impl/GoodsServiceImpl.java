@@ -5,6 +5,7 @@ import cn.hutool.core.util.RandomUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ruiyun.jvppeteer.core.Puppeteer;
 import com.ruiyun.jvppeteer.core.browser.Browser;
@@ -12,6 +13,7 @@ import com.ruiyun.jvppeteer.core.browser.BrowserFetcher;
 import com.ruiyun.jvppeteer.core.page.ElementHandle;
 import com.ruiyun.jvppeteer.core.page.Page;
 import com.ruiyun.jvppeteer.core.page.Request;
+import com.ruiyun.jvppeteer.exception.ProtocolException;
 import com.ruiyun.jvppeteer.options.Clip;
 import com.ruiyun.jvppeteer.options.LaunchOptions;
 import com.ruiyun.jvppeteer.options.LaunchOptionsBuilder;
@@ -20,11 +22,13 @@ import com.yssj.core.module.crawler.entity.Goods;
 import com.yssj.core.module.crawler.mapper.GoodsMapper;
 import com.yssj.core.module.crawler.service.IGoodsService;
 import com.yssj.core.utils.RobotNotify;
+import io.netty.util.internal.StringUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.IOUtils;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
+import javax.swing.plaf.synth.SynthEditorPaneUI;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -49,16 +53,34 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
 
     final String detailTpl = "https://pifa.pinduoduo.com/goods/detail/?gid=%s";
 
+    static Integer level1_point = 0;
+
     @Override
     public void pinGoodsSync() {
+        Browser browser = null;
+        Page page = null;
         try {
-            Browser browser = initBrowser();
-            Page page = initNewPage(browser);
+            browser = initBrowser();
+            log.info("浏览器初始化完毕");
+            page = initNewPage(browser);
             // 类目遍历
             syncCategary(page);
             // 关键字遍历
         }catch (Exception e){
-            e.printStackTrace();
+            log.error("爬虫异常,{}",e);
+            try {
+                if(page!=null){
+                    page.close();
+                }
+                if(browser!=null){
+                    browser.close();
+                }
+            }catch (Exception ex){
+                ex.printStackTrace();
+            }
+            if(e instanceof ProtocolException){
+                this.pinGoodsSync();
+            }
         }
     }
 
@@ -70,10 +92,16 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         viewport.setWidth(1280);
         LaunchOptions options = new LaunchOptionsBuilder().withIgnoreDefaultArgs(true)
                 .withArgs(arrayList).withDevtools(false)
-                .withViewport(viewport).withHeadless(false)
-                .withDumpio(false).build();
+//                .withIgnoreHTTPSErrors(true)
+                .withViewport(viewport)
+                .withHeadless(true)
+                .withDumpio(true).build();
         arrayList.add("--no-sandbox");
+        arrayList.add("--disable-infobars");
+//        arrayList.add("--proxy-server=http://47.243.53.78:8888");
+//        arrayList.add("--ignore-certificate-errors");
         arrayList.add("--disable-blink-features=AutomationControlled");
+        arrayList.add("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36");
         Browser browser = Puppeteer.launch(options);
         return browser;
     }
@@ -89,7 +117,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         // 价格升序
         page.click("div.type");
 
-        for (int j = 0; j < 10; j++) {
+        for (int j = 0; j < 5; j++) {
             ElementHandle elem = page.$("#root");
             Clip boundingBox = elem.boundingBox();
             //鼠标移动到目标
@@ -98,7 +126,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
             //开始鼠标滚动
             page.mouse().wheel(0.00,boundingBox.getHeight()+100);
             // 延时
-            Thread.sleep(3000);
+            Thread.sleep(RandomUtil.randomInt(15,30) * 1000);
         }
     }
 
@@ -111,7 +139,16 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         ClassPathResource classPathResource = new ClassPathResource("category.json");
         InputStream inputStream = classPathResource.getInputStream();
         JSONArray jsonArray = JSONUtil.parseArray(IOUtils.toString(inputStream, StandardCharsets.UTF_8));
-        for (Object level1 : jsonArray) {
+
+        int i = level1_point==0?0:level1_point;
+        String node = System.getProperty("node");
+        if(!StringUtil.isNullOrEmpty(node)&&level1_point==0){
+            i = (jsonArray.size() / 4 ) * Integer.parseInt(node);
+        }
+
+        for (; i < jsonArray.size() ; i++) {
+            level1_point = i;
+            Object level1 = jsonArray.get(i);
             JSONObject level1Object = JSONUtil.parseObj(level1);
             JSONArray level1Children = level1Object.getJSONArray("children");
             String level1Name = level1Object.getStr("optName");
@@ -123,6 +160,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
                 if(level2Children.size()==0){
                     // 2层末级分类，爬取
                     String url = String.format(categoryTpl,level2Id, "2");
+                    log.info("目录细分:{},{}",level1Name,level2Name);
                     fetchGoods(page,url);
                 }else {
                     for (Object level3 : level2Children) {
@@ -130,6 +168,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
                         String level3Name = level3Object.getStr("optName");
                         String level3Id = level3Object.getStr("optId");
                         String url = String.format(categoryTpl,level3Id, "3");
+                        log.info("目录细分:{},{},{}",level1Name,level2Name,level3Name);
                         fetchGoods(page,url);
                     }
                 }
@@ -139,16 +178,12 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
 
     private void fetchGoods(Page page,String url) throws Exception{
         page.goTo(url);
-        Thread.sleep(10000);
-        if(!page.mainFrame().url().startsWith("https://pifa.pinduoduo.com")){
-            log.info("已跳转sso");
-            Thread.sleep(100000);
-        }
-        page.wait(RandomUtil.randomInt(3,8) * 1000);
+        Thread.sleep(60*1000);
+
         // 价格升序
         page.click("div.type");
 
-        for (int j = 0; j < 10; j++) {
+        for (int j = 0; j < 5; j++) {
             ElementHandle elem = page.$("#root");
             Clip boundingBox = elem.boundingBox();
             //鼠标移动到目标
@@ -157,17 +192,17 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
             //开始鼠标滚动
             page.mouse().wheel(0.00,boundingBox.getHeight()+100);
             // 延时
-            int i = RandomUtil.randomInt(2, 8);
+            int i = RandomUtil.randomInt(70, 120);
             Thread.sleep( i * 1000);
         }
     }
 
     private Page initNewPage(Browser browser) throws Exception{
-//        Page page = browser.newPage();
-        Page page = browser.createIncognitoBrowserContext().newPage();
+        Page page = browser.newPage();
+//        Page page = browser.createIncognitoBrowserContext().newPage();
         page.evaluate("function(){Object.defineProperty(navigator, 'webdriver', {get: () => undefined});window.chrome = {};window.chrome.app = {\"InstallState\":\"hehe\", \"RunningState\":\"haha\", \"getDetails\":\"xixi\", \"getIsInstalled\":\"ohno\"};window.chrome.csi = function(){};window.chrome.loadTimes = function(){};window.chrome.runtime = function(){};Object.defineProperty(navigator, 'userAgent', {get: () => \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.113 Safari/537.36\",});Object.defineProperty(navigator, 'plugins', {get: () => [{\"description\": \"Portable Document Format\",\"filename\": \"internal-pdf-viewer\",\"length\": 1,\"name\": \"Chrome PDF Plugin\"}]});const originalQuery = window.navigator.permissions.query;window.navigator.permissions.query = (parameters) => (parameters.name === 'notifications'?Promise.resolve({ state: Notification.permission }):originalQuery(parameters));}",null);
-        int i = RandomUtil.randomInt(0, USER_AGENTS.length - 1);
-        page.setUserAgent(USER_AGENTS[i]);
+//        int i = RandomUtil.randomInt(0, USER_AGENTS.length - 1);
+        page.setUserAgent(USER_AGENTS[0]);
         page.setJavaScriptEnabled(true);
 
         // 响应拦截
@@ -175,7 +210,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
             Request request = response.request();
             if(request.url().contains("searchOptGoods")){
                 try {
-                    log.info("商品列表响应:{},{}",response.status(),response.text());
+                    log.info("商品列表响应:{},{}",response.status(),response.url());
                     if(response.status()!=200){
                         RobotNotify.robotMsg("爬取中断");
                         System.exit(1);
@@ -192,7 +227,12 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
                             entity.setStatus(0);
                             entity.setDisCount(minDiscount.toString());
                             entity.setBussinessId(parseObj.getLong("goodsId").toString());
-                            this.baseMapper.insert(entity);
+                            Long count = this.baseMapper.selectCount(new LambdaQueryWrapper<Goods>().eq(Goods::getBussinessId, parseObj.getLong("goodsId")));
+                            if(count>0){
+                                this.baseMapper.update(entity,new LambdaQueryWrapper<Goods>().eq(Goods::getBussinessId,parseObj.getLong("goodsId")));
+                            }else {
+                                this.baseMapper.insert(entity);
+                            }
                             log.info("折扣商品-{},{}",entity.getGoodsName(),entity.getUrl());
                         }
                     }
@@ -203,19 +243,17 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         });
 
         // 登录
-//        page.goTo(redirectUrl);
-//        Thread.sleep(3000);
-//        page.click("div.last-item");
-//        Thread.sleep(2000);
-//        page.type("#usernameId","16671087131");
-//        Thread.sleep(2000);
-//        page.type("#passwordId","Q1q1q1q1");
-//        Thread.sleep(2000);
-//        page.click("button");
-//        Thread.sleep(5000);
+        page.goTo(redirectUrl);
+        Thread.sleep(3000);
+        page.click("div.last-item");
+        Thread.sleep(2000);
+        page.type("#usernameId","16671087131");
+        Thread.sleep(2000);
+        page.type("#passwordId","Q1q1q1q1");
+        Thread.sleep(2000);
+        page.click("button");
+        Thread.sleep(5000);
 
-        page.setCacheEnabled(false);
-        page.setOfflineMode(false);
         return page;
     }
 
@@ -243,7 +281,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         viewport.setWidth(1280);
         LaunchOptions options = new LaunchOptionsBuilder().withIgnoreDefaultArgs(true)
                 .withArgs(arrayList).withDevtools(false)
-                .withViewport(viewport).withHeadless(false)
+                .withViewport(viewport).withHeadless(true)
 //                .withExecutablePath("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe")
                 .withDumpio(false).build();
         arrayList.add("--no-sandbox");
@@ -260,6 +298,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
             Request request = response.request();
             if(request.url().contains("searchOptGoods")){
                 try {
+                    log.info("页面爬取处理,{},{}",response.status(),response.text());
                     if(response.status()!=200){
                         RobotNotify.robotMsg("爬取中断");
                         System.exit(1);
@@ -338,7 +377,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
 
 
     final String[] USER_AGENTS = {
-//            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.64 Safari/537.36 Edg/101.0.1210.53",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.64 Safari/537.36 Edg/101.0.1210.53",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:96.0) Gecko/20100101 Firefox/96.0"
     };
 
